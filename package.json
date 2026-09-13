@@ -1,0 +1,21 @@
+{
+  "name": "modelmesh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "node --experimental-strip-types --test packages/*/src/**/*.test.ts apps/gateway/src/**/*.test.ts",
+    "gateway": "node --experimental-strip-types apps/gateway/src/index.ts",
+    "build:web": "vite build apps/web",
+    "build": "npm run build:web",
+    "typecheck": "tsc --noEmit && tsc -p apps/web/tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "@types/node": "^22.13.4"
+  }
+}
