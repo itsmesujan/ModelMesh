@@ -86,8 +86,11 @@ export const App: React.FC = () => {
       const err = await res.json();
       throw new Error(err.error || 'Failed to connect API key');
     }
+    const data = await res.json();
     await fetchAllData();
+    return data;
   };
+
 
   const handleTriggerAutoConnect = async () => {
     const res = await fetch('/api/connectors/autoconnect', { method: 'POST' });

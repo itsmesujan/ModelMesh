@@ -240,9 +240,14 @@ export function createGatewayServer(customDbPath?: string): http.Server {
         if (!body.providerId || !body.apiKey) {
           return sendJson(400, { error: 'providerId and apiKey required' });
         }
-        service.connectApiKey(body.providerId, body.apiKey);
-        return sendJson(200, { success: true, providerId: body.providerId, status: 'Connected' });
+        try {
+          const result = await service.connectApiKey(body.providerId, body.apiKey);
+          return sendJson(200, { providerId: body.providerId, status: 'Connected', ...result });
+        } catch (err: any) {
+          return sendJson(401, { error: err.message || 'Failed to authenticate provider' });
+        }
       }
+
 
       // GET /api/models/catalog
       if (req.method === 'GET' && pathname === '/api/models/catalog') {

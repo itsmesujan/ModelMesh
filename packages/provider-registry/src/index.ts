@@ -1,3 +1,5 @@
+import { OMNIROUTE_CATALOG } from './omniroute-catalog.ts';
+
 export type ProviderCategory = 'cloud' | 'local' | 'keyless' | 'aggregator' | 'custom';
 
 export type TrustTier = 
@@ -64,7 +66,7 @@ export interface ProviderManifest {
   }>;
 }
 
-export const SEED_PROVIDERS: ProviderManifest[] = [
+export const CURATED_SEED_PROVIDERS: ProviderManifest[] = [
   {
     providerId: 'ollama',
     displayName: 'Ollama (Local)',
@@ -424,8 +426,18 @@ export const SEED_PROVIDERS: ProviderManifest[] = [
   }
 ];
 
+// Combined exhaustive provider list: Curated seeds (with explicit models and verified ports)
+// merged with all 363+ OmniRoute ecosystem providers.
+export const SEED_PROVIDERS: ProviderManifest[] = [
+  ...CURATED_SEED_PROVIDERS,
+  ...OMNIROUTE_CATALOG.filter(p => !CURATED_SEED_PROVIDERS.some(c => c.providerId === p.providerId))
+];
+
+export { OMNIROUTE_CATALOG };
+
 export class ProviderRegistry {
   private providers: Map<string, ProviderManifest> = new Map();
+  private aliasMap: Map<string, ProviderManifest> = new Map();
 
   constructor(initialProviders: ProviderManifest[] = SEED_PROVIDERS) {
     for (const provider of initialProviders) {
@@ -435,14 +447,38 @@ export class ProviderRegistry {
 
   public register(manifest: ProviderManifest): void {
     this.providers.set(manifest.providerId, manifest);
+    
+    // Index standard aliases
+    const lowerId = manifest.providerId.toLowerCase();
+    if (lowerId.endsWith('-local')) {
+      this.aliasMap.set(lowerId.replace(/-local$/, ''), manifest);
+    }
+    if (lowerId.endsWith('-web')) {
+      this.aliasMap.set(lowerId.replace(/-web$/, ''), manifest);
+    }
+    if (lowerId.endsWith('-search')) {
+      this.aliasMap.set(lowerId.replace(/-search$/, ''), manifest);
+    }
+    if (lowerId.endsWith('-cli')) {
+      this.aliasMap.set(lowerId.replace(/-cli$/, ''), manifest);
+    }
+    if (lowerId.includes('-')) {
+      this.aliasMap.set(lowerId.replace(/-/g, ''), manifest);
+    }
   }
 
   public get(providerId: string): ProviderManifest | undefined {
-    return this.providers.get(providerId);
+    const direct = this.providers.get(providerId);
+    if (direct) return direct;
+    return this.aliasMap.get(providerId.toLowerCase());
   }
 
   public getAll(): ProviderManifest[] {
     return Array.from(this.providers.values());
+  }
+
+  public count(): number {
+    return this.providers.size;
   }
 
   public getByCategory(category: ProviderCategory): ProviderManifest[] {
@@ -461,8 +497,21 @@ export class ProviderRegistry {
     return this.getByCategory('keyless');
   }
 
+  public getAggregators(): ProviderManifest[] {
+    return this.getByCategory('aggregator');
+  }
+
+  public getOAuthProviders(): ProviderManifest[] {
+    return this.getAll().filter(p => p.connectors.some(c => c.type === 'oauth' || c.type === 'device_flow'));
+  }
+
+  public getHumanActionProviders(): ProviderManifest[] {
+    return this.getAll().filter(p => p.policy.requiresHumanAction || p.connectors.some(c => c.type === 'human_action'));
+  }
+
   public search(query: string): ProviderManifest[] {
-    const q = query.toLowerCase();
+    const q = query.toLowerCase().trim();
+    if (!q) return this.getAll();
     return this.getAll().filter(p => 
       p.displayName.toLowerCase().includes(q) ||
       p.providerId.toLowerCase().includes(q) ||
@@ -470,3 +519,4 @@ export class ProviderRegistry {
     );
   }
 }
+

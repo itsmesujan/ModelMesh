@@ -1,6 +1,7 @@
 import type { ProviderRegistry, ProviderManifest, ConnectorType } from '@modelmesh/provider-registry';
 import type { ModelRegistry, ModelOffering } from '@modelmesh/model-registry';
 import type { VaultManager } from '@modelmesh/secure-store';
+import { discoverKeylessModels, discoverLocalModels, discoverApiKeyModels } from './discovery.ts';
 
 export type ConnectorState = 
   | 'Discovered'
@@ -120,25 +121,26 @@ export class ConnectorEngine {
 
     // 2. Keyless providers
     if (primaryConnector.type === 'keyless') {
+      const discovered = await discoverKeylessModels(provider);
       const discoveredModels: string[] = [];
-      if (provider.staticModels) {
-        for (const sm of provider.staticModels) {
-          discoveredModels.push(sm.id);
-          const offering: ModelOffering = {
-            id: `${provider.providerId}:${sm.id}`,
-            canonicalId: sm.canonicalId,
-            providerId: provider.providerId,
-            connectionId: `conn_${provider.providerId}`,
-            providerModelId: sm.id,
-            costClass: sm.costClass,
-            inputPricePerM: sm.inputPricePerM || 0,
-            outputPricePerM: sm.outputPricePerM || 0,
-            contextWindow: sm.contextWindow,
-            capabilities: ['chat', 'streaming'],
-            isLocal: false
-          };
-          this.modelRegistry.registerOffering(offering);
-        }
+
+      for (const dm of discovered) {
+        discoveredModels.push(dm.id);
+        const canonical = this.modelRegistry.ensureCanonicalForModel(dm.id);
+        const offering: ModelOffering = {
+          id: `${provider.providerId}:${dm.id}`,
+          canonicalId: canonical.id,
+          providerId: provider.providerId,
+          connectionId: `conn_${provider.providerId}`,
+          providerModelId: dm.id,
+          costClass: dm.costClass || 'free',
+          inputPricePerM: dm.inputPricePerM || 0,
+          outputPricePerM: dm.outputPricePerM || 0,
+          contextWindow: dm.contextWindow || canonical.contextWindow,
+          capabilities: canonical.capabilities,
+          isLocal: false
+        };
+        this.modelRegistry.registerOffering(offering);
       }
 
       return {
@@ -158,21 +160,26 @@ export class ConnectorEngine {
       const isOnline = await this.probeLoopbackPort(port);
 
       if (isOnline) {
-        const discovered = [`local-${provider.providerId}-default`];
-        const offering: ModelOffering = {
-          id: `${provider.providerId}:default`,
-          canonicalId: 'llama-3.3-70b',
-          providerId: provider.providerId,
-          connectionId: `conn_${provider.providerId}`,
-          providerModelId: 'default',
-          costClass: 'free',
-          inputPricePerM: 0,
-          outputPricePerM: 0,
-          contextWindow: 128000,
-          capabilities: ['chat', 'streaming'],
-          isLocal: true
-        };
-        this.modelRegistry.registerOffering(offering);
+        const localModels = await discoverLocalModels(provider.providerId, port);
+        const discovered = localModels.map(m => m.id);
+
+        for (const lm of localModels) {
+          const canonical = this.modelRegistry.ensureCanonicalForModel(lm.id);
+          const offering: ModelOffering = {
+            id: `${provider.providerId}:${lm.id}`,
+            canonicalId: canonical.id,
+            providerId: provider.providerId,
+            connectionId: `conn_${provider.providerId}`,
+            providerModelId: lm.id,
+            costClass: 'free',
+            inputPricePerM: 0,
+            outputPricePerM: 0,
+            contextWindow: canonical.contextWindow,
+            capabilities: canonical.capabilities,
+            isLocal: true
+          };
+          this.modelRegistry.registerOffering(offering);
+        }
 
         return {
           providerId: provider.providerId,
@@ -181,6 +188,7 @@ export class ConnectorEngine {
           connectorType: 'openai_compatible',
           state: 'Connected',
           discoveredModels: discovered,
+          actionRequired: discovered.length === 0 ? `Server online on loopback port ${port}. No models currently loaded or pulled.` : undefined,
           trustTier: provider.trustTier
         };
       } else {
@@ -216,26 +224,38 @@ export class ConnectorEngine {
     // 5. API Key providers
     const cachedKey = this.vaultManager.getCached(provider.providerId);
     if (cachedKey) {
-      // Validate key against static or remote models
-      const discoveredModels: string[] = [];
-      if (provider.staticModels) {
-        for (const sm of provider.staticModels) {
-          discoveredModels.push(sm.id);
+      let discoveredModels: string[] = [];
+      try {
+        const models = await discoverApiKeyModels(provider, cachedKey);
+        discoveredModels = models.map(m => m.id);
+        for (const am of models) {
+          const canonical = this.modelRegistry.ensureCanonicalForModel(am.id);
           const offering: ModelOffering = {
-            id: `${provider.providerId}:${sm.id}`,
-            canonicalId: sm.canonicalId,
+            id: `${provider.providerId}:${am.id}`,
+            canonicalId: canonical.id,
             providerId: provider.providerId,
             connectionId: `conn_${provider.providerId}`,
-            providerModelId: sm.id,
-            costClass: sm.costClass,
-            inputPricePerM: sm.inputPricePerM || 0,
-            outputPricePerM: sm.outputPricePerM || 0,
-            contextWindow: sm.contextWindow,
-            capabilities: ['chat', 'streaming', 'tools'],
+            providerModelId: am.id,
+            costClass: am.costClass,
+            inputPricePerM: am.inputPricePerM || 0.5,
+            outputPricePerM: am.outputPricePerM || 1.5,
+            contextWindow: am.contextWindow || canonical.contextWindow,
+            capabilities: canonical.capabilities,
             isLocal: false
           };
           this.modelRegistry.registerOffering(offering);
         }
+      } catch (err: any) {
+        return {
+          providerId: provider.providerId,
+          displayName: provider.displayName,
+          category: provider.category,
+          connectorType: 'api_key',
+          state: 'Degraded',
+          error: err.message,
+          discoveredModels: [],
+          trustTier: provider.trustTier
+        };
       }
 
       return {
@@ -261,6 +281,34 @@ export class ConnectorEngine {
       trustTier: provider.trustTier
     };
   }
+
+  /**
+   * Validates and registers models discovered from an API key.
+   */
+  public async validateAndDiscoverApiKey(
+    provider: ProviderManifest,
+    apiKey: string
+  ): Promise<string[]> {
+    const models = await discoverApiKeyModels(provider, apiKey);
+    for (const m of models) {
+      const canonical = this.modelRegistry.ensureCanonicalForModel(m.id);
+      this.modelRegistry.registerOffering({
+        id: `${provider.providerId}:${m.id}`,
+        canonicalId: canonical.id,
+        providerId: provider.providerId,
+        connectionId: `conn_${provider.providerId}`,
+        providerModelId: m.id,
+        costClass: m.costClass,
+        inputPricePerM: m.inputPricePerM || 0.5,
+        outputPricePerM: m.outputPricePerM || 1.5,
+        contextWindow: m.contextWindow || canonical.contextWindow,
+        capabilities: canonical.capabilities,
+        isLocal: false
+      });
+    }
+    return models.map(m => m.id);
+  }
+
 
   /**
    * Safely probes loopback TCP port using a quick fetch or socket check.

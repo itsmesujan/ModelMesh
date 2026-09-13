@@ -75,7 +75,30 @@ export class GatewayService {
       this.modelRegistry,
       this.vaultManager
     );
+
+    // Pre-populate verified keyless offerings immediately so the router has instant routing capability
+    for (const provider of this.providerRegistry.getKeylessProviders()) {
+      if (provider.staticModels) {
+        for (const sm of provider.staticModels) {
+          const canonical = this.modelRegistry.ensureCanonicalForModel(sm.id);
+          this.modelRegistry.registerOffering({
+            id: `${provider.providerId}:${sm.id}`,
+            canonicalId: sm.canonicalId || canonical.id,
+            providerId: provider.providerId,
+            connectionId: `conn_${provider.providerId}`,
+            providerModelId: sm.id,
+            costClass: sm.costClass || 'free',
+            inputPricePerM: sm.inputPricePerM || 0,
+            outputPricePerM: sm.outputPricePerM || 0,
+            contextWindow: sm.contextWindow || canonical.contextWindow,
+            capabilities: canonical.capabilities,
+            isLocal: false
+          });
+        }
+      }
+    }
   }
+
 
   /**
    * Runs an AutoConnect pass and records results.
@@ -99,10 +122,22 @@ export class GatewayService {
   }
 
   /**
-   * Connects a provider with an API key securely.
+   * Connects a provider with an API key, validating against the real upstream provider
+   * and discovering live available models.
    */
-  public connectApiKey(providerId: string, apiKey: string): void {
-    // Encrypt and persist
+  public async connectApiKey(
+    providerId: string, 
+    apiKey: string
+  ): Promise<{ success: boolean; modelsCount: number; models: string[] }> {
+    const provider = this.providerRegistry.get(providerId);
+    if (!provider) {
+      throw new Error(`Provider ${providerId} not found in registry`);
+    }
+
+    // 1. Validate key against upstream provider and discover real models
+    const discoveredModels = await this.connectorEngine.validateAndDiscoverApiKey(provider, apiKey);
+
+    // 2. Encrypt and persist credentials
     const encrypted = this.vaultManager.encrypt(apiKey);
     this.db.saveVaultRecord({
       id: `vault_${providerId}`,
@@ -116,26 +151,7 @@ export class GatewayService {
 
     this.vaultManager.setCached(providerId, apiKey);
 
-    // Register offerings for this provider
-    const provider = this.providerRegistry.get(providerId);
-    if (provider?.staticModels) {
-      for (const sm of provider.staticModels) {
-        this.modelRegistry.registerOffering({
-          id: `${providerId}:${sm.id}`,
-          canonicalId: sm.canonicalId,
-          providerId,
-          connectionId: `conn_${providerId}`,
-          providerModelId: sm.id,
-          costClass: sm.costClass,
-          inputPricePerM: sm.inputPricePerM || 0,
-          outputPricePerM: sm.outputPricePerM || 0,
-          contextWindow: sm.contextWindow,
-          capabilities: ['chat', 'streaming', 'tools'],
-          isLocal: false
-        });
-      }
-    }
-
+    // 3. Persist connection status
     this.db.saveConnection({
       id: `conn_${providerId}`,
       providerId,
@@ -144,7 +160,14 @@ export class GatewayService {
       createdAt: Date.now(),
       lastValidatedAt: Date.now()
     });
+
+    return {
+      success: true,
+      modelsCount: discoveredModels.length,
+      models: discoveredModels
+    };
   }
+
 
   /**
    * Sets the active policy mode.

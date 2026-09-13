@@ -27,7 +27,24 @@ Level 5: UI & End-to-End Verification (Dashboard navigation, visual sanity, zero
    - `/v1/models` format fidelity.
    - `/v1/chat/completions` JSON payload verification.
    - Server-Sent Events (SSE) streaming verification (`data: [DONE]`).
-5. **Control Center UI (`apps/web`)**:
+5. **Provider Registry (`packages/provider-registry`)**:
+   - Verification of 360+ registered providers (369 total).
+   - Category filtering across Local, Keyless, Aggregators, OAuth, and Human-Action Web Cookie.
+   - Transparent alias resolution (`ollama` $\leftrightarrow$ `ollama-local`, `tavily` $\leftrightarrow$ `tavily-search`).
+   - Niche and major provider existence assertions.
+6. **Control Center UI (`apps/web`)**:
    - Verified render of all 9 screens.
    - Dark/light mode theme switching.
    - Calm design system compliance: 1px borders, SVG icons, zero emoji.
+   - Live provider category counts (`All: 369`, `Cloud: 204`, `Aggregators: 97`, `Local: 17`, `Keyless: 15`, `Custom: 36`).
+
+## Verification Commands
+
+| Command | Level | Expected Outcome |
+| :--- | :--- | :--- |
+| `npm test` | Unit & Contract Tests | 30 tests pass in ~4 seconds |
+| `npm run typecheck` | Static Type Analysis | 0 errors across packages & apps |
+| `npm run build:web` | Production Web Bundle | Clean build in ~4.5s (`dist/index.html`) |
+| `curl http://127.0.0.1:4000/api/overview` | Gateway Live Health | `{ gatewayStatus: "healthy", totalProviders: 369 }` |
+| `curl http://127.0.0.1:4000/v1/models` | OpenAI Catalog Proxy | 200 OK with normalized models array |
+

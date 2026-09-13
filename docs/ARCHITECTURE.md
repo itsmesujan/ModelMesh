@@ -111,3 +111,34 @@ Tables managed via Node 26 `node:sqlite`:
 - `quotas`: `id`, `connection_id`, `kind`, `limit_val`, `remaining_val`, `reset_at`, `confidence`
 - `routing_policies`: `id`, `name`, `mode`, `rules_json`, `is_active`
 - `telemetry_events`: `id`, `request_id`, `timestamp`, `canonical_model`, `provider_id`, `offering_id`, `status_code`, `latency_ms`, `prompt_tokens`, `completion_tokens`, `cost_estimate`, `trace_json`
+
+## 6. Provider Registry Architecture & OmniRoute Normalization
+
+ModelMesh incorporates an exhaustive provider inventory of **369 providers** derived from the complete OmniRoute ecosystem (`v3.8.50` and `main` branch):
+
+### 6.1 Provider Taxonomy & Connectors
+```text
+ProviderManifest
+ ├── providerId: string
+ ├── displayName: string
+ ├── category: 'cloud' | 'local' | 'keyless' | 'aggregator' | 'custom'
+ ├── trustTier: 'verified_official' | 'community_adapter' | 'generic_compatible' | 'local_trusted' | 'unverified'
+ ├── connectors: ConnectorSpec[]
+ │    ├── keyless: Public / zero-auth anonymous endpoint
+ │    ├── openai_compatible: Standard loopback / port-probed local runtime
+ │    ├── api_key: Stored in AES-256-GCM vault with key prefixes
+ │    ├── oauth / device_flow: Device authorization or RFC flow
+ │    └── human_action: Browser session cookie / userToken requiring manual user entry
+ ├── modelDiscovery: { strategy: 'openai_models' | 'static_catalog' | 'custom' }
+ ├── healthStrategy: { strategy: 'models_endpoint' | 'ping' | 'completion_probe' }
+ ├── capabilities: ['chat', 'streaming', 'tools', 'vision', 'embeddings', 'audio', 'search']
+ └── policy: { automation, requiresHumanAction, supportsStreaming, supportsTools, supportsVision }
+```
+
+### 6.2 Transparent Alias Indexing
+To prevent friction when developers refer to providers by shorthand or alternate names, `ProviderRegistry` maintains secondary indexing:
+- Local suffixes (`-local` $\leftrightarrow$ base): `ollama` $\leftrightarrow$ `ollama-local`, `lmstudio` $\leftrightarrow$ `lm-studio`
+- Web suffixes (`-web` $\leftrightarrow$ base): `duckduckgo-web` $\leftrightarrow$ `duckduckgo`
+- Search suffixes (`-search` $\leftrightarrow$ base): `tavily-search` $\leftrightarrow$ `tavily`
+- Hyphenated variants (`x-y` $\leftrightarrow$ `xy`): `open-router` $\leftrightarrow$ `openrouter`
+

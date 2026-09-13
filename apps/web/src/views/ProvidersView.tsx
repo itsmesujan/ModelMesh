@@ -15,10 +15,22 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onConne
   const [savingKey, setSavingKey] = useState<boolean>(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
+  const categories = [
+    { key: 'all', label: 'All', count: providers.length },
+    { key: 'cloud', label: 'Cloud', count: providers.filter(p => p.category === 'cloud').length },
+    { key: 'aggregator', label: 'Aggregators', count: providers.filter(p => p.category === 'aggregator').length },
+    { key: 'local', label: 'Local', count: providers.filter(p => p.category === 'local').length },
+    { key: 'keyless', label: 'Keyless', count: providers.filter(p => p.category === 'keyless').length },
+    { key: 'custom', label: 'Custom & Web', count: providers.filter(p => p.category === 'custom').length },
+  ];
+
   const filtered = providers.filter(p => {
     const matchesCat = categoryFilter === 'all' || p.category === categoryFilter;
-    const matchesSearch = p.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          p.providerId.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase().trim();
+    const matchesSearch = !q || 
+                          p.displayName.toLowerCase().includes(q) ||
+                          p.providerId.toLowerCase().includes(q) ||
+                          (p.description && p.description.toLowerCase().includes(q));
     return matchesCat && matchesSearch;
   });
 
@@ -29,16 +41,18 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onConne
     setSavingKey(true);
     setSaveMessage(null);
     try {
-      await onConnectKey(selected.providerId, keyInput.trim());
+      const res = await onConnectKey(selected.providerId, keyInput.trim());
       setKeyInput('');
-      setSaveMessage('Key encrypted and saved to local vault successfully.');
+      const count = res?.modelsCount ?? (res?.models?.length || 0);
+      setSaveMessage(`Connected successfully! Authenticated and discovered ${count} live models.`);
       onRefresh();
     } catch (err: any) {
-      setSaveMessage(`Error: ${err.message}`);
+      setSaveMessage(`Authentication Error: ${err.message}`);
     } finally {
       setSavingKey(false);
     }
   };
+
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '20px', height: 'calc(100vh - 120px)' }}>
@@ -69,22 +83,34 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onConne
 
         {/* Category Pills */}
         <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '8px' }}>
-          {['all', 'cloud', 'local', 'keyless', 'aggregator'].map(cat => (
+          {categories.map(cat => (
             <button
-              key={cat}
-              onClick={() => setCategoryFilter(cat)}
+              key={cat.key}
+              onClick={() => setCategoryFilter(cat.key)}
               style={{
                 padding: '3px 8px',
                 borderRadius: '999px',
                 fontSize: '0.725rem',
                 border: '1px solid var(--border)',
-                backgroundColor: categoryFilter === cat ? 'var(--accent)' : 'transparent',
-                color: categoryFilter === cat ? '#fff' : 'var(--text-secondary)',
+                backgroundColor: categoryFilter === cat.key ? 'var(--accent)' : 'transparent',
+                color: categoryFilter === cat.key ? '#fff' : 'var(--text-secondary)',
                 cursor: 'pointer',
-                textTransform: 'capitalize'
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
               }}
             >
-              {cat}
+              <span>{cat.label}</span>
+              <span style={{
+                fontSize: '0.65rem',
+                padding: '1px 5px',
+                borderRadius: '999px',
+                backgroundColor: categoryFilter === cat.key ? 'rgba(255,255,255,0.25)' : 'var(--surface-hover)',
+                color: categoryFilter === cat.key ? '#fff' : 'var(--text-tertiary)'
+              }}>
+                {cat.count}
+              </span>
             </button>
           ))}
         </div>
@@ -174,16 +200,20 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onConne
               </div>
             )}
 
-            {/* API Key Input Form for credentialed providers */}
-            {selected.connectors?.[0]?.type === 'api_key' && (
+            {/* API Key / Session Token Input Form */}
+            {(selected.connectors?.[0]?.type === 'api_key' || selected.connectors?.[0]?.type === 'human_action') && (
               <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontSize: '0.775rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
-                  Enter API Key (Encrypted in AES-256-GCM Vault)
+                  {selected.connectors?.[0]?.type === 'human_action' 
+                    ? 'Enter Browser Session Token / Cookie (Stored securely in local AES-256-GCM Vault)'
+                    : 'Enter API Key (Stored securely in local AES-256-GCM Vault)'}
                 </label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="password"
-                    placeholder={`e.g. ${selected.connectors[0].keyPrefix || 'sk-'}...`}
+                    placeholder={selected.connectors?.[0]?.type === 'human_action' 
+                      ? 'Paste session cookie / userToken header...' 
+                      : `e.g. ${selected.connectors[0]?.keyPrefix || 'sk-'}...`}
                     value={keyInput}
                     onChange={e => setKeyInput(e.target.value)}
                     style={{

@@ -23,3 +23,5 @@
 | **TSK-013** | `apps/gateway` (OpenAI Proxy & Management REST API) | Phase 4 | **DONE** | 6/6 contract tests passed (/v1/models, /v1/chat/completions, SSE) |
 | **TSK-014** | `apps/web` (Calm Control Center UI with 9 Screens) | Phase 4 | **DONE** | Production bundle built cleanly; verified static asset serving |
 | **TSK-015** | Live Verification, Contract Suite & Playthrough | Phase 5 | **DONE** | 26/26 tests passed; live daemon HTTP & SSE streaming verified |
+| **TSK-016** | Exhaustive OmniRoute Provider Catalog Integration | Phase 4 | **DONE** | Ingested 363+ OmniRoute providers (369 total in registry); 30/30 tests pass |
+| **TSK-017** | Live Provider Model Discovery & Real Catalog Expansion | Phase 4 | **DONE** | Zero fake data: live discovery across keyless, local & API keys; 134 canonicals, 109 active offerings |

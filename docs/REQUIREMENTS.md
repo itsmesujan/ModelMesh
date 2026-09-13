@@ -36,6 +36,8 @@ Developers and AI teams currently face immense operational friction configuring,
 - **FR-10 [OpenAI-Compatible Gateway]**: System must provide `/v1/models`, `/v1/chat/completions` (supporting SSE `text/event-stream`), `/v1/responses`, and `/v1/embeddings`.
 - **FR-11 [Calm Developer Control Center]**: System must provide a web dashboard across 9 core screens: Overview, Providers, AutoConnect, Models, Routing, Usage, Health, Policies, Settings.
 - **FR-12 [Policy Modes]**: System must support selectable presets: Balanced, Free, Local, Fast, Cheap, Best, Resilient, Private.
+- **FR-13 [Exhaustive OmniRoute Provider Inventory]**: System must integrate the complete OmniRoute provider inventory (363+ providers across 10 categories) with zero missing entries, mapping authentic connection schemas, trust tiers (`verified_official`, `community_adapter`, `generic_compatible`, `local_trusted`, `unverified`), smart alias resolution, and policy automation flags.
+
 
 ## 5. Non-Functional Requirements
 

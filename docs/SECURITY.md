@@ -25,3 +25,10 @@ Every provider connector carries an explicit trust classification:
 - `Generic Compatible`: Standard OpenAI `/v1/models` compatible connector.
 - `Local Trusted`: Loopback server with verified user consent.
 - `Unverified`: Requires manual user approval before activation.
+
+## 5. Web Cookie & Session Token Security Boundary
+ModelMesh integrates 36 web-cookie / browser-session providers (such as `chatgpt-web`, `claude-web`, `deepseek-web`, `kimi-web`):
+- **Explicit Human Action**: These providers are marked with `policy.requiresHumanAction = true` and `policy.automation = 'user_action'`. The gateway will never silently execute scraping, captcha bypasses, or credential brute-forcing.
+- **Vault Encryption**: If a developer pastes a browser session token or cookie header, it is encrypted via AES-256-GCM identically to production API keys and masked across all traces.
+- **Trust Demarcation**: All cookie-based wrappers carry the `Unverified` trust tier and emit warning badges in the dashboard to remind developers that unofficial session cookies can expire or change unexpectedly.
+
